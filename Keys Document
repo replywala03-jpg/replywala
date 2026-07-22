@@ -1,0 +1,38 @@
+YouTube Data API v3 key : AIzaSyBDOhb06ZLtcx3-nz_CrZaPfch0oHtBXfU
+OathID client id : 451238273070-m8pnub8nitjveue575ap2dapu23gj3go.apps.googleusercontent.com
+Client secrect: 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
+Openai key : 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
+
+
+# YouTube API Keys
+GOOGLE_API_KEY=AIzaSyBDOhb06ZLtcx3-nz_CrZaPfch0oHtBXfU
+GOOGLE_CLIENT_ID=451238273070-m8pnub8nitjveue575ap2dapu23gj3go.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=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
+
+# OpenAI API Key
+OPENAI_API_KEY=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
+
+# Settings
+ENABLE_COMMENT_POSTING=true
+
+
+# YouTube API Keys
+API_KEY=your_youtube_api_key_here
+CLIENT_ID=your_oauth_client_id_here
+CLIENT_SECRET=your_oauth_client_secret_here
+
+# OpenAI API Key
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Optional: Your YouTube Channel ID
+# CHANNEL_ID=your_channel_id_here
+
+# Settings
+ENABLE_COMMENT_POSTING=true
+
+https://accounts.google.com/o/oauth2/v2/auth?client_id=451238273070-m8pnub8nitjveue575ap2dapu23gj3go.apps.googleusercontent.com&redirect_uri=http://localhost:8080/oauth2callback&response_type=code&scope=https://www.googleapis.com/auth/youtube.force-ssl+https://www.googleapis.com/auth/youtube.readonly&access_type=offline&prompt=consent
+
+
+Client id : 451238273070-d9f7qs078831n695pne1316qa0ili447.apps.googleusercontent.com
+Cleint secret: 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
+

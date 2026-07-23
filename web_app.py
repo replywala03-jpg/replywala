@@ -220,21 +220,56 @@ def is_question(text):
 SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"]
 
 def get_authenticated_youtube():
+    """Authenticate and return YouTube API client"""
     creds = None
     token_file = 'token.pickle'
+    
+    # Check if we have saved credentials
     if os.path.exists(token_file):
         with open(token_file, 'rb') as token:
             creds = pickle.load(token)
+    
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                '../custom-reply-youtube/credentials.json', SCOPES)
+            import json, base64
+            
+            # Try to get credentials from environment variable (Render)
+            creds_base64 = os.getenv('CREDENTIALS_JSON_BASE64')
+            
+            if creds_base64:
+                # Decode from environment variable
+                creds_json_str = base64.b64decode(creds_base64).decode('utf-8')
+                creds_data = json.loads(creds_json_str)
+                
+                # Create temporary credentials file
+                temp_creds_path = '/tmp/credentials.json'
+                with open(temp_creds_path, 'w') as f:
+                    json.dump(creds_data, f)
+                
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    temp_creds_path, SCOPES)
+            else:
+                # Local development - use file path
+                local_creds_path = '../custom-reply-youtube/credentials.json'
+                if os.path.exists(local_creds_path):
+                    flow = InstalledAppFlow.from_client_secrets_file(
+                        local_creds_path, SCOPES)
+                else:
+                    st.error("❌ CREDENTIALS_JSON_BASE64 environment variable not set!")
+                    st.error("Please add it in Render Dashboard → Environment Variables")
+                    return None
+            
             creds = flow.run_local_server(port=8080, open_browser=True)
+        
+        # Save credentials for next time
         with open(token_file, 'wb') as token:
             pickle.dump(creds, token)
+    
     return build('youtube', 'v3', credentials=creds)
+
+
 
 def extract_video_id(url):
     patterns = [

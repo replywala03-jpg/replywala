@@ -243,41 +243,66 @@ def get_authenticated_youtube():
             with open(temp_creds_path, 'w') as f:
                 json.dump(creds_data, f)
             
-            # Use the Render URL as redirect_uri
+            # Create flow with redirect_uri
             flow = InstalledAppFlow.from_client_secrets_file(
                 temp_creds_path, 
                 scopes=SCOPES,
                 redirect_uri='https://replywala.onrender.com/oauth2callback'
             )
             
-            auth_url, _ = flow.authorization_url(
-                access_type='offline',
-                include_granted_scopes='true'
-            )
+            # Check if code is in the URL parameters
+            query_params = st.query_params
+            code_from_url = query_params.get('code', None)
             
-            st.info("🔐 Please authorize the app:")
-            st.markdown(f"[Click here to authorize]({auth_url})")
-            st.markdown("After authorizing, you'll be redirected. Copy the `code` parameter from the URL and paste it below.")
-            
-            code = st.text_input("Enter the authorization code from the URL:")
-            
-            if code:
+            if code_from_url:
+                # We have the code from the redirect!
                 try:
-                    flow.fetch_token(code=code)
+                    flow.fetch_token(code=code_from_url)
                     creds = flow.credentials
                     st.success("✅ Authentication successful!")
                     with open(token_file, 'wb') as token:
                         pickle.dump(creds, token)
+                    # Clear the URL parameters
+                    st.query_params.clear()
+                    st.rerun()
+                    return build('youtube', 'v3', credentials=creds)
                 except Exception as e:
                     st.error(f"❌ Authentication failed: {e}")
+                    # Clear the URL parameters
+                    st.query_params.clear()
                     return None
             else:
-                st.warning("⚠️ Please enter the authorization code")
+                # No code yet - show the authorization link
+                auth_url, _ = flow.authorization_url(
+                    access_type='offline',
+                    include_granted_scopes='true'
+                )
+                
+                st.info("🔐 Please authorize the app:")
+                st.markdown(f"[Click here to authorize]({auth_url})")
+                st.markdown("After authorizing, you'll be redirected back here automatically.")
+                
+                # Manual fallback
+                st.markdown("---")
+                st.markdown("**Or paste the code manually if redirect doesn't work:**")
+                code = st.text_input("Enter the authorization code:")
+                
+                if code:
+                    try:
+                        flow.fetch_token(code=code)
+                        creds = flow.credentials
+                        st.success("✅ Authentication successful!")
+                        with open(token_file, 'wb') as token:
+                            pickle.dump(creds, token)
+                        st.rerun()
+                        return build('youtube', 'v3', credentials=creds)
+                    except Exception as e:
+                        st.error(f"❌ Authentication failed: {e}")
+                        return None
+                
                 return None
     
     return build('youtube', 'v3', credentials=creds)
-
-
 def extract_video_id(url):
     patterns = [
         r'(?:v=|\/)([0-9A-Za-z_-]{11})(?:[?&]|$)',

@@ -243,13 +243,32 @@ def get_authenticated_youtube():
             with open(temp_creds_path, 'w') as f:
                 json.dump(creds_data, f)
             
-            # Use the oob (out-of-band) flow - displays code on page
             flow = InstalledAppFlow.from_client_secrets_file(
                 temp_creds_path, 
                 scopes=SCOPES,
-                redirect_uri='urn:ietf:wg:oauth:2.0:oob'
+                redirect_uri='https://replywala.onrender.com/oauth2callback'
             )
             
+            # Check if we have the code from the redirect
+            query_params = st.query_params
+            code_from_url = query_params.get('code', None)
+            
+            if code_from_url:
+                try:
+                    flow.fetch_token(code=code_from_url)
+                    creds = flow.credentials
+                    st.success("✅ Authentication successful!")
+                    with open(token_file, 'wb') as token:
+                        pickle.dump(creds, token)
+                    st.query_params.clear()
+                    st.rerun()
+                    return build('youtube', 'v3', credentials=creds)
+                except Exception as e:
+                    st.error(f"❌ Authentication failed: {e}")
+                    st.query_params.clear()
+                    return None
+            
+            # No code yet - show authorization link
             auth_url, _ = flow.authorization_url(
                 access_type='offline',
                 include_granted_scopes='true'
@@ -257,9 +276,12 @@ def get_authenticated_youtube():
             
             st.info("🔐 Please authorize the app:")
             st.markdown(f"[Click here to authorize]({auth_url})")
-            st.markdown("After authorizing, you'll see a page with a code. **Copy that code** and paste it below.")
+            st.markdown("After authorizing, you'll be redirected back. **The code will be captured automatically.**")
             
-            code = st.text_input("Enter the authorization code from the page:")
+            # Manual fallback
+            st.markdown("---")
+            st.markdown("**Or paste the code manually:**")
+            code = st.text_input("Enter the authorization code:")
             
             if code:
                 try:
@@ -273,11 +295,11 @@ def get_authenticated_youtube():
                 except Exception as e:
                     st.error(f"❌ Authentication failed: {e}")
                     return None
-            else:
-                st.warning("⚠️ Please enter the authorization code")
-                return None
+            
+            return None
     
     return build('youtube', 'v3', credentials=creds)
+
 def extract_video_id(url):
     patterns = [
         r'(?:v=|\/)([0-9A-Za-z_-]{11})(?:[?&]|$)',

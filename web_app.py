@@ -256,11 +256,10 @@ def get_authenticated_youtube():
                     st.error("❌ CREDENTIALS_JSON_BASE64 environment variable not set!")
                     return None
             
-            # Generate authorization URL with explicit redirect URI
+            # Generate authorization URL - DO NOT pass redirect_uri here
             auth_url, _ = flow.authorization_url(
                 access_type='offline',
-                include_granted_scopes='true',
-                redirect_uri='urn:ietf:wg:oauth:2.0:oob'
+                include_granted_scopes='true'
             )
             
             st.info("🔐 Please authorize the app:")
@@ -271,8 +270,8 @@ def get_authenticated_youtube():
             
             if code:
                 try:
-                    # Exchange code for credentials with explicit redirect URI
-                    flow.fetch_token(code=code, redirect_uri='urn:ietf:wg:oauth:2.0:oob')
+                    # Exchange code for credentials - DO NOT pass redirect_uri here either
+                    flow.fetch_token(code=code)
                     creds = flow.credentials
                     st.success("✅ Authentication successful!")
                     with open(token_file, 'wb') as token:

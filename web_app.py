@@ -220,7 +220,7 @@ def is_question(text):
 SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"]
 
 def get_authenticated_youtube():
-    """Authenticate and return YouTube API client"""
+    """Authenticate and return YouTube API client - works on Render"""
     creds = None
     token_file = 'token.pickle'
     
@@ -235,40 +235,54 @@ def get_authenticated_youtube():
         else:
             import json, base64
             
-            # Try to get credentials from environment variable (Render)
+            # Get credentials from environment variable
             creds_base64 = os.getenv('CREDENTIALS_JSON_BASE64')
+            if not creds_base64:
+                st.error("❌ CREDENTIALS_JSON_BASE64 environment variable not set!")
+                return None
             
-            if creds_base64:
-                # Decode from environment variable
-                creds_json_str = base64.b64decode(creds_base64).decode('utf-8')
-                creds_data = json.loads(creds_json_str)
-                
-                # Create temporary credentials file
-                temp_creds_path = '/tmp/credentials.json'
-                with open(temp_creds_path, 'w') as f:
-                    json.dump(creds_data, f)
-                
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    temp_creds_path, SCOPES)
-            else:
-                # Local development - use file path
-                local_creds_path = '../custom-reply-youtube/credentials.json'
-                if os.path.exists(local_creds_path):
-                    flow = InstalledAppFlow.from_client_secrets_file(
-                        local_creds_path, SCOPES)
-                else:
-                    st.error("❌ CREDENTIALS_JSON_BASE64 environment variable not set!")
-                    st.error("Please add it in Render Dashboard → Environment Variables")
+            # Decode credentials
+            creds_json_str = base64.b64decode(creds_base64).decode('utf-8')
+            creds_data = json.loads(creds_json_str)
+            
+            # Create temporary credentials file
+            temp_creds_path = '/tmp/credentials.json'
+            with open(temp_creds_path, 'w') as f:
+                json.dump(creds_data, f)
+            
+            # Use OAuth with manual code entry (no browser)
+            flow = InstalledAppFlow.from_client_secrets_file(
+                temp_creds_path, SCOPES)
+            
+            # Generate authorization URL
+            auth_url, _ = flow.authorization_url(
+                access_type='offline',
+                include_granted_scopes='true'
+            )
+            
+            # Display URL for manual authorization
+            st.info("🔐 Please authorize the app:")
+            st.markdown(f"[Click here to authorize]({auth_url})")
+            
+            # Manual code entry
+            code = st.text_input("Enter the authorization code from the URL:")
+            
+            if code:
+                try:
+                    flow.fetch_token(code=code)
+                    creds = flow.credentials
+                    st.success("✅ Authentication successful!")
+                    # Save credentials
+                    with open(token_file, 'wb') as token:
+                        pickle.dump(creds, token)
+                except Exception as e:
+                    st.error(f"❌ Authentication failed: {e}")
                     return None
-            
-            creds = flow.run_local_server(port=8080, open_browser=True)
-        
-        # Save credentials for next time
-        with open(token_file, 'wb') as token:
-            pickle.dump(creds, token)
+            else:
+                st.warning("⚠️ Please enter the authorization code")
+                return None
     
     return build('youtube', 'v3', credentials=creds)
-
 
 
 def extract_video_id(url):
@@ -580,13 +594,14 @@ with tab1:
         
         if not is_logged_in:
             if st.button("🔗 Connect YouTube Channel", type="primary", use_container_width=True):
-                with st.spinner("Opening browser for login..."):
-                    try:
-                        youtube = get_authenticated_youtube()
-                        st.success("✅ Connected successfully!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ Connection failed: {e}")
+    with st.spinner("Initializing authentication..."):
+        try:
+            youtube = get_authenticated_youtube()
+            if youtube:
+                st.success("✅ Connected successfully!")
+                st.rerun()
+        except Exception as e:
+            st.error(f"❌ Connection failed: {e}")
         else:
             st.success("✅ YouTube account connected")
             

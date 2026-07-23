@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-ReplyWala - Final Production Version
-YouTube Comment AI with: OAuth, AI Replies, Language Detection, Positive Response to Negatives,
-Only replies to unreplied comments, Stripe Payments, Geolocation, Free Tier
+ReplyWala - Production Ready SaaS
+YouTube Comment AI with OAuth, AI Replies, Stripe Payments, and more
 """
 
 import streamlit as st
@@ -99,8 +98,8 @@ def create_checkout_session(price_id, reply_count, plan_name):
         session = stripe.checkout.Session.create(
             line_items=[{"price": price_id, "quantity": 1}],
             mode="payment",
-            success_url="http://localhost:8501/?success=true",
-            cancel_url="http://localhost:8501/?canceled=true",
+            success_url="https://replywala.onrender.com/?success=true",
+            cancel_url="https://replywala.onrender.com/?canceled=true",
             payment_method_types=["card", "upi"] if currency['code'] == 'INR' else ["card"],
         )
         st.markdown(f'<meta http-equiv="refresh" content="0;url={session.url}">', unsafe_allow_html=True)
@@ -109,7 +108,7 @@ def create_checkout_session(price_id, reply_count, plan_name):
         st.error(f"❌ Failed to create session: {e}")
 
 # ============================================================================
-# USAGE TRACKING
+# USAGE TRACKING (Free Tier)
 # ============================================================================
 USAGE_FILE = 'usage.json'
 
@@ -185,7 +184,6 @@ def get_language_prompt(lang):
 # COMMENT DETECTION
 # ============================================================================
 def is_negative_comment(text):
-    """Detect if comment is negative"""
     negative_words = [
         'hate', 'stupid', 'idiot', 'dumb', 'useless', 'waste', 'boring',
         'terrible', 'awful', 'garbage', 'trash', 'dislike', 'worst',
@@ -200,7 +198,6 @@ def is_negative_comment(text):
     return False
 
 def is_question(text):
-    """Detect if comment is a question"""
     if '?' in text:
         return True
     question_words = ['what', 'when', 'where', 'why', 'how', 'who', 'which',
@@ -224,7 +221,6 @@ def get_authenticated_youtube():
     creds = None
     token_file = 'token.pickle'
     
-    # Check if we have saved credentials
     if os.path.exists(token_file):
         with open(token_file, 'rb') as token:
             creds = pickle.load(token)
@@ -235,44 +231,49 @@ def get_authenticated_youtube():
         else:
             import json, base64
             
-            # Get credentials from environment variable
+            # Get credentials from environment variable (Render)
             creds_base64 = os.getenv('CREDENTIALS_JSON_BASE64')
-            if not creds_base64:
-                st.error("❌ CREDENTIALS_JSON_BASE64 environment variable not set!")
-                return None
             
-            # Decode credentials
-            creds_json_str = base64.b64decode(creds_base64).decode('utf-8')
-            creds_data = json.loads(creds_json_str)
+            if creds_base64:
+                # Decode from environment variable
+                creds_json_str = base64.b64decode(creds_base64).decode('utf-8')
+                creds_data = json.loads(creds_json_str)
+                
+                # Create temporary credentials file
+                temp_creds_path = '/tmp/credentials.json'
+                with open(temp_creds_path, 'w') as f:
+                    json.dump(creds_data, f)
+                
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    temp_creds_path, SCOPES)
+            else:
+                # Local development - use file path
+                local_creds_path = '../custom-reply-youtube/credentials.json'
+                if os.path.exists(local_creds_path):
+                    flow = InstalledAppFlow.from_client_secrets_file(
+                        local_creds_path, SCOPES)
+                else:
+                    st.error("❌ CREDENTIALS_JSON_BASE64 environment variable not set!")
+                    st.error("Please add it in Render Dashboard → Environment Variables")
+                    return None
             
-            # Create temporary credentials file
-            temp_creds_path = '/tmp/credentials.json'
-            with open(temp_creds_path, 'w') as f:
-                json.dump(creds_data, f)
-            
-            # Use OAuth with manual code entry (no browser)
-            flow = InstalledAppFlow.from_client_secrets_file(
-                temp_creds_path, SCOPES)
-            
-            # Generate authorization URL
+            # Generate authorization URL for manual flow (works on Render)
             auth_url, _ = flow.authorization_url(
                 access_type='offline',
                 include_granted_scopes='true'
             )
             
-            # Display URL for manual authorization
             st.info("🔐 Please authorize the app:")
             st.markdown(f"[Click here to authorize]({auth_url})")
+            st.markdown("After authorizing, copy the code from the URL and paste it below.")
             
-            # Manual code entry
-            code = st.text_input("Enter the authorization code from the URL:")
+            code = st.text_input("Enter the authorization code:")
             
             if code:
                 try:
                     flow.fetch_token(code=code)
                     creds = flow.credentials
                     st.success("✅ Authentication successful!")
-                    # Save credentials
                     with open(token_file, 'wb') as token:
                         pickle.dump(creds, token)
                 except Exception as e:
@@ -283,7 +284,6 @@ def get_authenticated_youtube():
                 return None
     
     return build('youtube', 'v3', credentials=creds)
-
 
 def extract_video_id(url):
     patterns = [
@@ -298,7 +298,6 @@ def extract_video_id(url):
     return None
 
 def get_comments_with_reply_status(youtube, video_id, max_results=20):
-    """Fetch comments and check if they already have replies"""
     try:
         request = youtube.commentThreads().list(
             part='snippet,replies',
@@ -312,8 +311,6 @@ def get_comments_with_reply_status(youtube, video_id, max_results=20):
             comment_id = item['snippet']['topLevelComment']['id']
             comment_text = item['snippet']['topLevelComment']['snippet']['textDisplay']
             author = item['snippet']['topLevelComment']['snippet']['authorDisplayName']
-            
-            # Check if this comment already has replies
             total_reply_count = item['snippet'].get('totalReplyCount', 0)
             has_replies = total_reply_count > 0
             
@@ -330,11 +327,9 @@ def get_comments_with_reply_status(youtube, video_id, max_results=20):
         return []
 
 def generate_positive_reply(comment_text, tone="friendly", is_negative=False):
-    """Generate AI reply - positive/constructive response for negative comments"""
     lang = detect_language(comment_text)
     lang_prompt = get_language_prompt(lang)
     
-    # Different prompts for negative vs positive comments
     if is_negative:
         system_prompt = f"""{lang_prompt} 
         This comment is negative or critical. Your reply should:
@@ -453,9 +448,6 @@ st.markdown("""
     }
     .comment-box.negative {
         border-left-color: #f39c12;
-    }
-    .comment-box.has-reply {
-        border-left-color: #2ecc71;
     }
     .reply-box {
         background: rgba(102, 126, 234, 0.15);
@@ -594,14 +586,14 @@ with tab1:
         
         if not is_logged_in:
             if st.button("🔗 Connect YouTube Channel", type="primary", use_container_width=True):
-    with st.spinner("Initializing authentication..."):
-        try:
-            youtube = get_authenticated_youtube()
-            if youtube:
-                st.success("✅ Connected successfully!")
-                st.rerun()
-        except Exception as e:
-            st.error(f"❌ Connection failed: {e}")
+                with st.spinner("Initializing authentication..."):
+                    try:
+                        youtube = get_authenticated_youtube()
+                        if youtube:
+                            st.success("✅ Connected successfully!")
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Connection failed: {e}")
         else:
             st.success("✅ YouTube account connected")
             
@@ -685,49 +677,48 @@ with tab1:
     # ---- Processing ----
     if st.session_state.processing and st.session_state.video_id:
         youtube = get_authenticated_youtube()
-        with st.spinner(f"Fetching {num_comments} comments..."):
-            comments = get_comments_with_reply_status(youtube, st.session_state.video_id, num_comments * 2)
-            if not comments:
-                st.warning("No comments found on this video")
-                st.session_state.processing = False
-            else:
-                # Only keep comments without replies
-                unreplied_comments = [c for c in comments if not c['has_replies']]
-                skipped_replied = len(comments) - len(unreplied_comments)
-                
-                if skipped_replied > 0:
-                    st.info(f"⏭️ Skipped {skipped_replied} comments that already have replies")
-                
-                # Limit to requested number
-                unreplied_comments = unreplied_comments[:num_comments]
-                
-                if not unreplied_comments:
-                    st.warning("No unreplied comments found on this video")
+        if youtube:
+            with st.spinner(f"Fetching {num_comments} comments..."):
+                comments = get_comments_with_reply_status(youtube, st.session_state.video_id, num_comments * 2)
+                if not comments:
+                    st.warning("No comments found on this video")
                     st.session_state.processing = False
                 else:
-                    st.session_state.comments = unreplied_comments
-                    st.session_state.replies = []
-                    st.session_state.posted = {}
-                    st.session_state.edited_replies = {}
-                    st.session_state.negative_count = 0
-                    st.session_state.skipped_count = 0
+                    unreplied_comments = [c for c in comments if not c['has_replies']]
+                    skipped_replied = len(comments) - len(unreplied_comments)
                     
-                    for comment in unreplied_comments:
-                        is_neg = is_negative_comment(comment['text'])
-                        if is_neg:
-                            st.session_state.negative_count += 1
+                    if skipped_replied > 0:
+                        st.info(f"⏭️ Skipped {skipped_replied} comments that already have replies")
+                    
+                    unreplied_comments = unreplied_comments[:num_comments]
+                    
+                    if not unreplied_comments:
+                        st.warning("No unreplied comments found on this video")
+                        st.session_state.processing = False
+                    else:
+                        st.session_state.comments = unreplied_comments
+                        st.session_state.replies = []
+                        st.session_state.posted = {}
+                        st.session_state.edited_replies = {}
+                        st.session_state.negative_count = 0
+                        st.session_state.skipped_count = 0
                         
-                        reply = generate_positive_reply(
-                            comment['text'], 
-                            st.session_state.tone, 
-                            is_neg
-                        )
-                        st.session_state.replies.append(reply)
-                        st.session_state.posted[comment['id']] = False
-                        st.session_state.edited_replies[comment['id']] = reply
-                    
-                    st.session_state.processing = False
-                    st.rerun()
+                        for comment in unreplied_comments:
+                            is_neg = is_negative_comment(comment['text'])
+                            if is_neg:
+                                st.session_state.negative_count += 1
+                            
+                            reply = generate_positive_reply(
+                                comment['text'], 
+                                st.session_state.tone, 
+                                is_neg
+                            )
+                            st.session_state.replies.append(reply)
+                            st.session_state.posted[comment['id']] = False
+                            st.session_state.edited_replies[comment['id']] = reply
+                        
+                        st.session_state.processing = False
+                        st.rerun()
     
     # ---- Display Results ----
     if st.session_state.comments:
@@ -750,70 +741,70 @@ with tab1:
         """, unsafe_allow_html=True)
         
         youtube = get_authenticated_youtube()
-        
-        for idx, comment in enumerate(st.session_state.comments):
-            with st.container():
-                is_neg = is_negative_comment(comment['text'])
-                neg_badge = "⚠️ Negative" if is_neg else ""
-                reply_status = f"💬 {comment['reply_count']} replies" if comment['has_replies'] else "🆕 No replies yet"
-                
-                st.markdown(f"""
-                <div class="comment-box {'negative' if is_neg else ''}">
-                    <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: rgba(255,255,255,0.5);">
-                        <span>@{comment['author']}</span>
-                        <span>{reply_status}</span>
+        if youtube:
+            for idx, comment in enumerate(st.session_state.comments):
+                with st.container():
+                    is_neg = is_negative_comment(comment['text'])
+                    neg_badge = "⚠️ Negative" if is_neg else ""
+                    reply_status = f"💬 {comment['reply_count']} replies" if comment['has_replies'] else "🆕 No replies yet"
+                    
+                    st.markdown(f"""
+                    <div class="comment-box {'negative' if is_neg else ''}">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: rgba(255,255,255,0.5);">
+                            <span>@{comment['author']}</span>
+                            <span>{reply_status}</span>
+                        </div>
+                        <div style="color: white; font-size: 0.85rem; margin-top: 0.2rem;">{comment['text']}</div>
+                        {f'<div style="color: #f39c12; font-size: 0.7rem; margin-top: 0.2rem;">⚠️ {neg_badge}</div>' if is_neg else ''}
                     </div>
-                    <div style="color: white; font-size: 0.85rem; margin-top: 0.2rem;">{comment['text']}</div>
-                    {f'<div style="color: #f39c12; font-size: 0.7rem; margin-top: 0.2rem;">⚠️ {neg_badge}</div>' if is_neg else ''}
-                </div>
-                """, unsafe_allow_html=True)
-                
-                if idx < len(st.session_state.replies):
-                    current_reply = st.session_state.edited_replies.get(comment['id'], st.session_state.replies[idx])
+                    """, unsafe_allow_html=True)
                     
-                    edited_reply = st.text_area(
-                        f"✏️ Reply #{idx+1}",
-                        value=current_reply,
-                        key=f"edit_{comment['id']}",
-                        height=60
-                    )
-                    
-                    if edited_reply != current_reply:
-                        st.session_state.edited_replies[comment['id']] = edited_reply
-                    
-                    col1, col2 = st.columns([1, 1])
-                    
-                    with col1:
-                        if not st.session_state.posted.get(comment['id'], False) or st.session_state.posted.get(comment['id']) == 'skipped':
-                            if st.button(f"✅ Post Reply", key=f"post_{comment['id']}", use_container_width=True):
-                                if remaining_free > 0:
-                                    reply_to_post = st.session_state.edited_replies.get(comment['id'], st.session_state.replies[idx])
-                                    with st.spinner("Posting to YouTube..."):
-                                        result = post_reply(youtube, comment['id'], reply_to_post)
-                                        if result:
-                                            st.session_state.posted[comment['id']] = True
-                                            track_reply_used()
-                                            st.success("✅ Posted!")
-                                            time.sleep(0.3)
-                                            st.rerun()
-                                        else:
-                                            st.error("❌ Failed to post")
-                                else:
-                                    st.warning("⚠️ No free credits left")
-                        else:
-                            st.success("✅ Posted")
-                    
-                    with col2:
-                        if not st.session_state.posted.get(comment['id'], False):
-                            if st.button(f"⏭️ Skip", key=f"skip_{comment['id']}", use_container_width=True):
-                                st.session_state.posted[comment['id']] = 'skipped'
-                                st.session_state.skipped_count += 1
-                                st.success("⏭️ Skipped")
-                                st.rerun()
-                        elif st.session_state.posted.get(comment['id']) == 'skipped':
-                            st.info("⏭️ Skipped")
-                    
-                    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+                    if idx < len(st.session_state.replies):
+                        current_reply = st.session_state.edited_replies.get(comment['id'], st.session_state.replies[idx])
+                        
+                        edited_reply = st.text_area(
+                            f"✏️ Reply #{idx+1}",
+                            value=current_reply,
+                            key=f"edit_{comment['id']}",
+                            height=60
+                        )
+                        
+                        if edited_reply != current_reply:
+                            st.session_state.edited_replies[comment['id']] = edited_reply
+                        
+                        col1, col2 = st.columns([1, 1])
+                        
+                        with col1:
+                            if not st.session_state.posted.get(comment['id'], False) or st.session_state.posted.get(comment['id']) == 'skipped':
+                                if st.button(f"✅ Post Reply", key=f"post_{comment['id']}", use_container_width=True):
+                                    if remaining_free > 0:
+                                        reply_to_post = st.session_state.edited_replies.get(comment['id'], st.session_state.replies[idx])
+                                        with st.spinner("Posting to YouTube..."):
+                                            result = post_reply(youtube, comment['id'], reply_to_post)
+                                            if result:
+                                                st.session_state.posted[comment['id']] = True
+                                                track_reply_used()
+                                                st.success("✅ Posted!")
+                                                time.sleep(0.3)
+                                                st.rerun()
+                                            else:
+                                                st.error("❌ Failed to post")
+                                    else:
+                                        st.warning("⚠️ No free credits left")
+                            else:
+                                st.success("✅ Posted")
+                        
+                        with col2:
+                            if not st.session_state.posted.get(comment['id'], False):
+                                if st.button(f"⏭️ Skip", key=f"skip_{comment['id']}", use_container_width=True):
+                                    st.session_state.posted[comment['id']] = 'skipped'
+                                    st.session_state.skipped_count += 1
+                                    st.success("⏭️ Skipped")
+                                    st.rerun()
+                            elif st.session_state.posted.get(comment['id']) == 'skipped':
+                                st.info("⏭️ Skipped")
+                        
+                        st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
 # ============================================================================
 # TAB 2: FEATURES
@@ -876,7 +867,7 @@ with tab3:
         </div>
         """, unsafe_allow_html=True)
         price_id = get_price_id(STARTER_INR, STARTER_USD)
-        if price_id and st.button(f"Buy - {symbol}{p['starter']['display']}", key="s"):
+        if price_id and st.button(f"Buy - {symbol}{p['starter']['display']}", key="s", use_container_width=True):
             create_checkout_session(price_id, p['starter']['replies'], "Starter")
     
     with col2:
@@ -894,7 +885,7 @@ with tab3:
         </div>
         """, unsafe_allow_html=True)
         price_id = get_price_id(POPULAR_INR, POPULAR_USD)
-        if price_id and st.button(f"Buy - {symbol}{p['popular']['display']}", key="p"):
+        if price_id and st.button(f"Buy - {symbol}{p['popular']['display']}", key="p", use_container_width=True):
             create_checkout_session(price_id, p['popular']['replies'], "Popular")
     
     with col3:
@@ -912,7 +903,7 @@ with tab3:
         </div>
         """, unsafe_allow_html=True)
         price_id = get_price_id(PRO_INR, PRO_USD)
-        if price_id and st.button(f"Buy - {symbol}{p['pro']['display']}", key="pr"):
+        if price_id and st.button(f"Buy - {symbol}{p['pro']['display']}", key="pr", use_container_width=True):
             create_checkout_session(price_id, p['pro']['replies'], "Pro")
     
     st.markdown(f"""

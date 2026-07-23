@@ -229,8 +229,28 @@ def get_authenticated_youtube():
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                '../custom-reply-youtube/credentials.json', SCOPES)
+            # Try to get credentials from environment variable (Render)
+            import json
+            creds_base64 = os.getenv('CREDENTIALS_JSON_BASE64')
+            
+            if creds_base64:
+                # Decode from environment variable
+                import base64
+                creds_json_str = base64.b64decode(creds_base64).decode('utf-8')
+                creds_data = json.loads(creds_json_str)
+                
+                # Create a temporary credentials file
+                temp_creds_path = '/tmp/credentials.json'
+                with open(temp_creds_path, 'w') as f:
+                    json.dump(creds_data, f)
+                
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    temp_creds_path, SCOPES)
+            else:
+                # Fallback to local file (for development)
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    '../custom-reply-youtube/credentials.json', SCOPES)
+            
             creds = flow.run_local_server(port=8080, open_browser=True)
         with open(token_file, 'wb') as token:
             pickle.dump(creds, token)

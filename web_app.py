@@ -217,7 +217,7 @@ def is_question(text):
 SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"]
 
 def get_authenticated_youtube():
-    """Authenticate and return YouTube API client - works on Render"""
+    """Authenticate and return YouTube API client - uses manual code entry"""
     creds = None
     token_file = 'token.pickle'
     
@@ -243,45 +243,24 @@ def get_authenticated_youtube():
             with open(temp_creds_path, 'w') as f:
                 json.dump(creds_data, f)
             
+            # Use the OOB (out-of-band) flow
             flow = InstalledAppFlow.from_client_secrets_file(
                 temp_creds_path, 
                 scopes=SCOPES,
-                redirect_uri='https://replywala.onrender.com/oauth2callback'
+                redirect_uri='urn:ietf:wg:oauth:2.0:oob'
             )
             
-            # Check if we have the code from the redirect
-            query_params = st.query_params
-            code_from_url = query_params.get('code', None)
-            
-            if code_from_url:
-                try:
-                    flow.fetch_token(code=code_from_url)
-                    creds = flow.credentials
-                    st.success("✅ Authentication successful!")
-                    with open(token_file, 'wb') as token:
-                        pickle.dump(creds, token)
-                    st.query_params.clear()
-                    st.rerun()
-                    return build('youtube', 'v3', credentials=creds)
-                except Exception as e:
-                    st.error(f"❌ Authentication failed: {e}")
-                    st.query_params.clear()
-                    return None
-            
-            # No code yet - show authorization link
             auth_url, _ = flow.authorization_url(
                 access_type='offline',
                 include_granted_scopes='true'
             )
             
-            st.info("🔐 Please authorize the app:")
-            st.markdown(f"[Click here to authorize]({auth_url})")
-            st.markdown("After authorizing, you'll be redirected back. **The code will be captured automatically.**")
+            st.info("🔐 Authorize ReplyWala:")
+            st.markdown(f"**Step 1:** [Click here to authorize]({auth_url})")
+            st.markdown("**Step 2:** Google will show a page with a code. **Copy that code**.")
+            st.markdown("**Step 3:** Paste it below and click outside the box.")
             
-            # Manual fallback
-            st.markdown("---")
-            st.markdown("**Or paste the code manually:**")
-            code = st.text_input("Enter the authorization code:")
+            code = st.text_input("📋 Paste the authorization code here:")
             
             if code:
                 try:

@@ -254,13 +254,13 @@ def get_authenticated_youtube():
                         local_creds_path, SCOPES)
                 else:
                     st.error("❌ CREDENTIALS_JSON_BASE64 environment variable not set!")
-                    st.error("Please add it in Render Dashboard → Environment Variables")
                     return None
             
-            # Generate authorization URL for manual flow (works on Render)
+            # Generate authorization URL with explicit redirect URI
             auth_url, _ = flow.authorization_url(
                 access_type='offline',
-                include_granted_scopes='true'
+                include_granted_scopes='true',
+                redirect_uri='urn:ietf:wg:oauth:2.0:oob'
             )
             
             st.info("🔐 Please authorize the app:")
@@ -271,7 +271,8 @@ def get_authenticated_youtube():
             
             if code:
                 try:
-                    flow.fetch_token(code=code)
+                    # Exchange code for credentials with explicit redirect URI
+                    flow.fetch_token(code=code, redirect_uri='urn:ietf:wg:oauth:2.0:oob')
                     creds = flow.credentials
                     st.success("✅ Authentication successful!")
                     with open(token_file, 'wb') as token:

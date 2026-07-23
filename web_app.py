@@ -231,32 +231,25 @@ def get_authenticated_youtube():
         else:
             import json, base64
             
-            # Get credentials from environment variable (Render)
             creds_base64 = os.getenv('CREDENTIALS_JSON_BASE64')
+            if not creds_base64:
+                st.error("❌ CREDENTIALS_JSON_BASE64 environment variable not set!")
+                return None
             
-            if creds_base64:
-                # Decode from environment variable
-                creds_json_str = base64.b64decode(creds_base64).decode('utf-8')
-                creds_data = json.loads(creds_json_str)
-                
-                # Create temporary credentials file
-                temp_creds_path = '/tmp/credentials.json'
-                with open(temp_creds_path, 'w') as f:
-                    json.dump(creds_data, f)
-                
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    temp_creds_path, SCOPES)
-            else:
-                # Local development - use file path
-                local_creds_path = '../custom-reply-youtube/credentials.json'
-                if os.path.exists(local_creds_path):
-                    flow = InstalledAppFlow.from_client_secrets_file(
-                        local_creds_path, SCOPES)
-                else:
-                    st.error("❌ CREDENTIALS_JSON_BASE64 environment variable not set!")
-                    return None
+            creds_json_str = base64.b64decode(creds_base64).decode('utf-8')
+            creds_data = json.loads(creds_json_str)
             
-            # Generate authorization URL - DO NOT pass redirect_uri here
+            temp_creds_path = '/tmp/credentials.json'
+            with open(temp_creds_path, 'w') as f:
+                json.dump(creds_data, f)
+            
+            # Use the Render URL as redirect_uri
+            flow = InstalledAppFlow.from_client_secrets_file(
+                temp_creds_path, 
+                scopes=SCOPES,
+                redirect_uri='https://replywala.onrender.com/oauth2callback'
+            )
+            
             auth_url, _ = flow.authorization_url(
                 access_type='offline',
                 include_granted_scopes='true'
@@ -264,13 +257,12 @@ def get_authenticated_youtube():
             
             st.info("🔐 Please authorize the app:")
             st.markdown(f"[Click here to authorize]({auth_url})")
-            st.markdown("After authorizing, copy the code from the URL and paste it below.")
+            st.markdown("After authorizing, you'll be redirected. Copy the `code` parameter from the URL and paste it below.")
             
-            code = st.text_input("Enter the authorization code:")
+            code = st.text_input("Enter the authorization code from the URL:")
             
             if code:
                 try:
-                    # Exchange code for credentials - DO NOT pass redirect_uri here either
                     flow.fetch_token(code=code)
                     creds = flow.credentials
                     st.success("✅ Authentication successful!")
@@ -284,6 +276,7 @@ def get_authenticated_youtube():
                 return None
     
     return build('youtube', 'v3', credentials=creds)
+
 
 def extract_video_id(url):
     patterns = [

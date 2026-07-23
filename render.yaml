@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: replywala
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run web_app.py --server.port $PORT --server.address 0.0.0.0
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: API_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_STARTER_INR
+        sync: false
+      - key: STRIPE_STARTER_USD
+        sync: false
+      - key: STRIPE_POPULAR_INR
+        sync: false
+      - key: STRIPE_POPULAR_USD
+        sync: false
+      - key: STRIPE_PRO_INR
+        sync: false
+      - key: STRIPE_PRO_USD
+        sync: false
